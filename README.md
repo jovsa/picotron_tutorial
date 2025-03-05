@@ -11,7 +11,7 @@ A step by step tutorial on how to build [Picotron](https://github.com/huggingfac
 - 🎬 [[Picotron tutorial] Bonus: Debugging Distributed codebase](https://www.youtube.com/watch?v=_8xlRgFY_-g&list=PL-_armZiJvAnhcRr6yTJ0__f3Oi-LLi9S&index=4)
 - 🎬 [[Picotron tutorial] Part 3: Data Parallel (Naive & Bucket)](https://www.youtube.com/watch?v=k8EpWveM_t4&list=PL-_armZiJvAnhcRr6yTJ0__f3Oi-LLi9S&index=4)
 
-## Setup 
+## Setup
 
 ```
 conda create -n env-picotron-tutorial python=3.10 --y
@@ -27,9 +27,21 @@ pip install -e .
 
 
 ```bash
+# stanity check
+export PATH=$PATH:/sbin
+cd step1_modeling/
+torchrun --nproc_per_node 1 train.py
+
 # Basline
 cd step3_dataloader/
 torchrun --nproc_per_node 1 train.py --micro_batch_size 4 --gradient_accumulation_steps 8 --seq_len 1024 --max_tokens 4096000 --num_proc 16 --model_name TinyLlama/TinyLlama_v1.1 --num_hidden_layers 22 --num_attention_heads 32 --num_key_value_heads 4 --run_name baseline_1B --use_wandb
+
+# notes:
+# to work on  `instance-20240912-040720`
+# * removing --num_proc 16 --seq_len 1024 --max_tokens 4096000
+torchrun --nproc_per_node 1 train.py --micro_batch_size 4 --gradient_accumulation_steps 8 --model_name TinyLlama/TinyLlama_v1.1 --num_hidden_layers 22 --num_attention_heads 32 --num_key_value_heads 4 --run_name baseline_1B --use_wandb
+
+
 
 # Tensor Parallel
 cd step4_tensor_parallel/
