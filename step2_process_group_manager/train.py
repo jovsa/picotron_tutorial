@@ -11,14 +11,14 @@ import argparse
 from torch.optim import AdamW
 from transformers import AutoConfig
 
-from model import Llama
+from step1_modeling.model import Llama
 import process_group_manager as pgm
 from process_group_manager import setup_process_group_manager
 from utils import set_all_seed, print
 
-if __name__ == "__main__":    
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Training script for LLaMA model")
-    
+
     # Environment arguments
     parser.add_argument("--omp_num_threads", type=str, default="1")
     parser.add_argument("--tokenizers_parallelism", type=str, default="false")
@@ -34,7 +34,7 @@ if __name__ == "__main__":
     parser.add_argument("--learning_rate", type=float, default=3e-4)
     parser.add_argument("--seq_len", type=int, default=32)
     parser.add_argument("--micro_batch_size", type=int, default=1)
-    
+
     # Distributed training arguments
     parser.add_argument("--tp_size", type=int, default=1, help="Tensor Parallel size")
     parser.add_argument("--dp_size", type=int, default=1, help="Data Parallel size")
@@ -51,14 +51,14 @@ if __name__ == "__main__":
     os.environ["OMP_NUM_THREADS"] = args.omp_num_threads
     os.environ["TOKENIZERS_PARALLELISM"] = args.tokenizers_parallelism
     os.environ["DEVICE"] = "cuda"
-    
+
     local_rank = int(os.environ["LOCAL_RANK"])
     global_rank = int(os.environ["RANK"])
     world_size = int(os.environ["WORLD_SIZE"])
     backend = "nccl"
     torch.cuda.set_device(local_rank)
     device = torch.device("cuda", local_rank)
-    dtype = torch.bfloat16
+    dtype = torch.float32
 
     dist.init_process_group(rank=global_rank, world_size=world_size, backend=backend, init_method=f"env://", timeout=datetime.timedelta(minutes=2))
     setup_process_group_manager(dp_size=args.dp_size, pp_size=args.pp_size, tp_size=args.tp_size)
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     model_config.max_position_embeddings = args.seq_len
 
     model = Llama(config=model_config)
-    model.to(dtype).to(device)            
+    model.to(dtype).to(device)
     model.train()
 
     dist.barrier()
@@ -95,30 +95,30 @@ if __name__ == "__main__":
     optimizer = AdamW(model.parameters(), lr=args.learning_rate)
 
     dist.barrier()
-    
+
     # Create dummy data
     input_ids = torch.randint(0, model_config.vocab_size, (args.micro_batch_size, args.seq_len), device=device)
     target_ids = torch.randint(0, model_config.vocab_size, (args.micro_batch_size, args.seq_len), device=device)
 
     # Training step
     optimizer.zero_grad()
-    
+
     # Forward pass
     outputs = model(input_ids=input_ids)
-    
+
     # Compute loss
     target_ids = target_ids.reshape(-1)
     outputs = outputs.view(-1, model_config.vocab_size)
     loss = F.cross_entropy(outputs, target_ids)
-    
+
     # Backward pass
     loss.backward()
-    
+
     # Optimizer step
     optimizer.step()
 
     print(f"[rank {pgm.process_group_manager.global_rank}], Loss: {loss:.4f}")
-       
+
     if is_wandb_rank and args.use_wandb:
         wandb.log({"loss": loss.item()})
 
